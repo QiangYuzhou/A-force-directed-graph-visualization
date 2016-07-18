@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>force graph</title>
+    <script src="data.js"></script>
+    <script src="jquery-1.11.2.min.js"></script>
+    <script src="calculate.js"></script>
+</head>
+<style rel="stylesheet">
+    #container{
+        width: 800px;
+        height: 600px;
+        border: solid #555 1px;
+    }
+    #container circle{
+        r: 5px;
+        stroke-opacity: 0.6;
+    }
+    #container line{
+        stroke-width: 2px;
+        stroke-opacity: 0.2;
+        stroke: #555;
+    }
+</style>
+<body>
+<svg id="container"></svg>
+<script type="text/javascript">
+    nodes = [];
+    edges = [];
+    mouse = {};
+    mouse.x = 0;
+    mouse.y = 0;
+    focusedElement = null;
+    colors = ["#ffc", "#cff", "#fcc", "#9cc", "#fc9", "#969", "#f99", "#369", "#639", "#936", "#693", "#963"];
+    function initNodes() {
+        for (var i = 0; i < cnt.nodes.length; i++) {
+            xi = 250+Math.floor(300*Math.random());
+            yi = 150+Math.floor(300*Math.random());
+            node = {}
+            node.x = xi;
+            node.y = yi;
+            node.group = cnt.nodes[i].group;
+            node.id = cnt.nodes[i].id;
+            v = {}
+            v.x = 0;
+            v.y = 0;
+            node.v = v;
+            f = {}
+            f.x = 0;
+            f.y = 0;
+            node.f = f;
+            nodes[i] = node;
+        }
+    }
+    function findNodePosition(nodeId){
+        for(var i=0; i<nodes.length; i++) {
+            if (nodes[i].id == nodeId)  return i;
+        }
+    }
+    function initEdges(){
+        for (var i = 0; i < cnt.links.length; i++) {
+            edge = {}
+            edge.source = findNodePosition(cnt.links[i].source);
+            edge.target = findNodePosition(cnt.links[i].target);
+            edge.springLength = Math.sqrt(Math.pow(nodes[edge.source].x - nodes[edge.target].x, 2) + Math.pow(nodes[edge.source].y - nodes[edge.target].y, 2));
+            edge.value = cnt.links[i].value;
+            edges[i] = edge;
+        }
+    }
+
+    function drawNodesAndEdges(){
+        content = "";
+        for(var i=0; i<edges.length; i++){
+            content+='<line x1="'+nodes[edges[i].source].x+'" y1="'+nodes[edges[i].source].y+'" x2="'+nodes[edges[i].target].x+'" y2="'+nodes[edges[i].target].y+'" />';
+        }
+        for(var i=0; i<nodes.length; i++){
+            content+= '<circle cx="'+nodes[i].x+'" cy="'+nodes[i].y+'" fill="'+colors[nodes[i].group]+'" id="'+nodes[i].id+'"/>';
+        }
+        var oContainer = document.getElementById("container");
+        oContainer.innerHTML = content;
+    }
+
+    function addActionListener(){
+        for(var i=0; i<nodes.length; i++){
+            var el = document.getElementById(nodes[i].id);
+            el.addEventListener("mousedown", function(e){ focusedElement = this.id;});
+        }
+        addEventListener("mouseup", function(e){ focusedElement = null;});
+        document.getElementById("container").addEventListener("mousemove", function(e){mouse.x = e.x; mouse.y = e.y;});
+    }
+
+    function ajustCenter(){
+        sumX = 0;
+        sumY = 0;
+        for(var i=0; i<nodes.length; i++){
+            sumX+=nodes[i].x;
+            sumY+=nodes[i].y;
+        }
+        avgX = sumX/nodes.length;
+        avgY = sumY/nodes.length;
+
+        if(avgX > 410){
+            offsetX = -10;
+        }else if(avgX < 390){
+            offsetX = 10;
+        }else{
+            offsetX = 0;
+        }
+
+        if(avgY > 310){
+            offsetY = -10;
+        }else if(avgY < 290){
+            offsetY = 10;
+        }else{
+            offsetY = 0;
+        }
+        for(var i=0; i<nodes.length; i++) {
+            nodes[i].x += offsetX;
+            nodes[i].y += offsetY;
+        }
+    }
+
+
+
+    function update(){
+        if(focusedElement != null) {
+            nodeIndex = findNodePosition(focusedElement);
+            nodes[nodeIndex].x = mouse.x;
+            nodes[nodeIndex].y = mouse.y;
+        }
+        for(var i=0; i<nodes.length; i++){
+            nodes[i].f.x = 0;
+            nodes[i].f.y = 0;
+        }
+
+        attrK = 0.001;
+        repuK = 0.01;
+        for(var i=0; i<edges.length; i++){
+            res = calcAttractionForce(nodes[edges[i].source], nodes[edges[i].target], edges[i].springLength, edges[i].value);
+            nodes[edges[i].source].f.x += attrK*res[0];
+            nodes[edges[i].source].f.y += attrK*res[1];
+            nodes[edges[i].target].f.x -= attrK*res[0];
+            nodes[edges[i].target].f.y -= attrK*res[1];
+            console.log("attrForce:", res[0], res[1]);
+        }
+        for(var i=0; i<nodes.length; i++){
+            for(var j=i+1; j<nodes.length; j++){
+                res = calcRepulsionForce(nodes[i], nodes[j]);
+                nodes[i].f.x -= repuK*res[0];
+                nodes[i].f.y -= repuK*res[1];
+                nodes[j].f.x += repuK*res[0];
+                nodes[j].f.y += repuK*res[1];
+            }
+        }
+        eps = 0.01
+        for(var i=0; i<nodes.length;i++){
+            if(nodes[i].f.x>0 && nodes[i].f.x < eps)
+                nodes[i].v.x += 0;
+            else if(nodes[i].f.x<0 && nodes[i].f.x > -eps)
+                nodes[i].v.x += 0;
+            else if(nodes[i].f.x > eps)
+                nodes[i].v.x += nodes[i].f.x - eps;
+            else if(nodes[i].f.x < -eps)
+                nodes[i].v.x += nodes[i].f.x + eps;
+
+            if(nodes[i].f.y>0 && nodes[i].f.y < eps)
+                nodes[i].v.y += 0;
+            else if(nodes[i].f.y<0 && nodes[i].f.y > -eps)
+                nodes[i].v.y += 0;
+            else if(nodes[i].f.y > 0.01)
+                nodes[i].v.y += nodes[i].f.y - eps;
+            else if(nodes[i].f.y < -0.01)
+                nodes[i].v.y += nodes[i].f.y + eps;
+        }
+        for(var i=0; i<nodes.length;i++){
+            nodes[i].x += nodes[i].v.x;
+            nodes[i].y += nodes[i].v.y;
+        }
+        ajustCenter();
+    }
+
+    initNodes();
+    initEdges();
+    drawNodesAndEdges();
+    addActionListener();
+    keyDown = {};
+    addEventListener("keydown", function(e){
+        if(e.keyCode in keyDown)
+            delete keyDown[e.keyCode];
+        else
+            keyDown[e.keyCode] = true;
+    }, false);
+
+    function main(){
+        if(!(32 in keyDown)){
+            update();
+            drawNodesAndEdges();
+            addActionListener();
+        }
+    }
+    setInterval(main, 50);
+</script>
+</body>
+</html>
